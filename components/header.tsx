@@ -1,4 +1,5 @@
 import Button from "../components/button.tsx";
+import { Link } from "react-router-dom";
 function Header() {
   return (
     <div className="w-full flex items-center flex-col">
@@ -20,8 +21,12 @@ function Header() {
           </ul>
         </nav>
         <div className="flex flex-row gap-5">
-          <Button width={120} height={30} text="Войти"></Button>
-          <Button width={120} height={30} text="Регистрация"></Button>
+          <Link to="/login">
+            <Button width={120} height={30} text="Войти"></Button>
+          </Link>
+          <Link to="/registration">
+            <Button width={120} height={30} text="Регистрация"></Button>
+          </Link>
         </div>
       </div>
       <div className="w-full bg-gray-400 h-0.5"></div>

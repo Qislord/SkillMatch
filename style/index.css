@@ -26,3 +26,12 @@
     );
   cursor: pointer;
 }
+.input-form{
+  width: 100%;
+  border: 1px solid var(--color-gray-400);
+  border-radius: var(--radius-md);
+  outline: none;
+  padding: 0.25rem;
+  height: 30px;
+  color: var(--color-gray-800);
+}
