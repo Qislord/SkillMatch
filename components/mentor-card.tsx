@@ -1,4 +1,3 @@
-import Button from "./button";
 import { FaStar } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 function MentorCard({
@@ -26,7 +25,10 @@ function MentorCard({
 
   return (
     <div className="w-full flex items-stretch justify-center">
-      <div className="w-80 h-full min-h-[34rem] flex flex-col justify-between rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+      <div
+        className="w-80 h-full min-h-136 flex flex-col justify-between rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden transition hover:shadow-lg cursor-pointer"
+        onClick={() => id && navigate(`/mentor/${id}`)}
+      >
         <div>
           <div className="w-full h-56 overflow-hidden bg-gray-200">
             <img
@@ -81,11 +83,6 @@ function MentorCard({
               <FaStar key={index} color="#ffc107" />
             ))}
           </div>
-          <Button
-            height={30}
-            text="Подробнее о менторе"
-            onClick={() => (id ? navigate(`/mentor/${id}`) : undefined)}
-          />
         </div>
       </div>
     </div>

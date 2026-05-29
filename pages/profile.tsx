@@ -18,6 +18,7 @@ type UserProfile = {
   avatarBase64: string | null;
   professions?: string[];
   ratePerHour?: number | null;
+  experience?: number | null;
   portfolio?: Array<{
     id: string;
     mimeType: string;
@@ -39,6 +40,7 @@ function Profile() {
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [profession, setProfession] = useState<string>("");
   const [ratePerHour, setRatePerHour] = useState<string>("");
+  const [experience, setExperience] = useState<string>("");
   const [portfolioFiles, setPortfolioFiles] = useState<File[]>([]);
   const [isUploadingPortfolio, setIsUploadingPortfolio] = useState(false);
   const [portfolioPreview, setPortfolioPreview] = useState<
@@ -98,6 +100,7 @@ function Profile() {
         setRatePerHour(
           user.ratePerHour != null ? String(user.ratePerHour) : "",
         );
+        setExperience(user.experience != null ? String(user.experience) : "");
         setPortfolioPreview(user.portfolio ?? []);
       } catch {
         navigate("/login");
@@ -154,6 +157,7 @@ function Profile() {
           bio,
           professions: profession ? [profession] : [],
           ratePerHour,
+          experience,
         }),
       });
 
@@ -565,6 +569,19 @@ function Profile() {
                       value={ratePerHour}
                       onChange={(e) => setRatePerHour(e.target.value)}
                       placeholder="Например, 1500"
+                    />
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-sm mb-1">
+                      Опыт работы (лет)
+                    </label>
+                    <input
+                      className="input-form"
+                      type="number"
+                      min="0"
+                      value={experience}
+                      onChange={(e) => setExperience(e.target.value)}
+                      placeholder="Например, 3"
                     />
                   </div>
                 </div>

@@ -108,7 +108,7 @@ async function updateProfile(req, res, next) {
       return res.status(401).json({ message: "Пользователь не авторизован" });
     }
 
-    const { skills, bio, professions, ratePerHour } = req.body;
+    const { skills, bio, professions, ratePerHour, experience } = req.body;
 
     if (!Array.isArray(skills)) {
       return res.status(400).json({ message: "Навыки должны быть массивом" });
@@ -142,6 +142,10 @@ async function updateProfile(req, res, next) {
       typeof ratePerHour === "number" || typeof ratePerHour === "string"
         ? Number(ratePerHour)
         : undefined;
+    const expValue =
+      typeof experience === "number" || typeof experience === "string"
+        ? Number(experience)
+        : undefined;
 
     const updatePayload = {
       skills: normalizedSkills,
@@ -153,6 +157,9 @@ async function updateProfile(req, res, next) {
       updatePayload.ratePerHour = Number.isFinite(rate)
         ? rate
         : currentUser.ratePerHour;
+      updatePayload.experience = Number.isFinite(expValue)
+        ? expValue
+        : currentUser.experience;
     }
 
     const user = await updateUserProfile(req.session.userId, updatePayload);

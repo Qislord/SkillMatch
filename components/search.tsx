@@ -94,7 +94,7 @@ function Search() {
                     }
                     name={m.name}
                     profession={m.profession || ""}
-                    experience={0}
+                    experience={m.experience != null ? m.experience : 0}
                     skills={m.skills || []}
                     price={m.ratePerHour ?? 0}
                     raiting={m.rating ?? 0}

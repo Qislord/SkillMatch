@@ -24,6 +24,7 @@ async function createUsersTableIfNotExists() {
     ADD COLUMN IF NOT EXISTS avatar_base64 TEXT,
     ADD COLUMN IF NOT EXISTS professions TEXT[] DEFAULT '{}',
     ADD COLUMN IF NOT EXISTS rate_per_hour NUMERIC,
+    ADD COLUMN IF NOT EXISTS experience INTEGER,
     ADD COLUMN IF NOT EXISTS portfolio JSONB DEFAULT '[]'::jsonb;
   `);
 
@@ -40,8 +41,11 @@ async function createUsersTableIfNotExists() {
   await pool.query(`
     ALTER TABLE mentor_sessions
     ADD COLUMN IF NOT EXISTS mentor_id INTEGER,
+    ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     ADD COLUMN IF NOT EXISTS starts_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN IF NOT EXISTS start_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN IF NOT EXISTS end_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS meeting_link TEXT,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
   `);
@@ -77,6 +81,7 @@ function sanitizeUser(userRow) {
     professions: userRow.professions ?? [],
     ratePerHour:
       userRow.rate_per_hour != null ? Number(userRow.rate_per_hour) : null,
+    experience: userRow.experience != null ? Number(userRow.experience) : null,
     portfolio: userRow.portfolio ?? [],
     createdAt: userRow.created_at,
   };
@@ -143,7 +148,7 @@ async function loginUser({ email, password }) {
 async function getUserById(userId) {
   const result = await pool.query(
     `
-            SELECT id, name, email, role, skills, bio, avatar_mime_type, avatar_base64, professions, rate_per_hour, portfolio, created_at
+            SELECT id, name, email, role, skills, bio, avatar_mime_type, avatar_base64, professions, rate_per_hour, experience, portfolio, created_at
             FROM users
             WHERE id = $1;
         `,
@@ -159,7 +164,7 @@ async function getUserById(userId) {
 
 async function updateUserProfile(
   userId,
-  { skills, bio, professions, ratePerHour },
+  { skills, bio, professions, ratePerHour, experience },
 ) {
   const result = await pool.query(
     `
@@ -167,11 +172,12 @@ async function updateUserProfile(
             SET skills = $2,
                 bio = $3,
                 professions = COALESCE($4, professions),
-                rate_per_hour = COALESCE($5, rate_per_hour)
+                rate_per_hour = COALESCE($5, rate_per_hour),
+                experience = COALESCE($6, experience)
             WHERE id = $1
-            RETURNING id, name, email, role, skills, bio, professions, rate_per_hour, portfolio, avatar_mime_type, avatar_base64, created_at;
+            RETURNING id, name, email, role, skills, bio, professions, rate_per_hour, experience, portfolio, avatar_mime_type, avatar_base64, created_at;
         `,
-    [userId, skills, bio, professions, ratePerHour],
+    [userId, skills, bio, professions, ratePerHour, experience],
   );
 
   if (result.rows.length === 0) {
@@ -392,6 +398,7 @@ async function getMentorsList({
            u.skills,
            u.professions,
            u.rate_per_hour,
+           u.experience,
            u.avatar_mime_type,
            u.avatar_base64,
            u.bio,
@@ -401,6 +408,22 @@ async function getMentorsList({
     FROM users u
     LEFT JOIN mentor_reviews mr ON mr.mentor_id = u.id
     WHERE ${whereClauses.join(" AND ")}
+      AND u.bio <> ''
+      AND CARDINALITY(COALESCE(u.professions, '{}')) > 0
+      AND CARDINALITY(COALESCE(u.skills, '{}')) > 0
+      AND u.rate_per_hour IS NOT NULL
+      AND u.experience IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM mentor_sessions ms
+        WHERE COALESCE(ms.mentor_id, ms.user_id) = u.id
+          AND COALESCE(ms.end_at, ms.ends_at) > NOW()
+          AND NOT EXISTS (
+            SELECT 1
+            FROM session_bookings sb
+            WHERE sb.session_id = ms.id
+          )
+      )
     GROUP BY u.id
     ${havingClause}
     ORDER BY ${orderBy};
@@ -416,6 +439,7 @@ async function getMentorsList({
     professions: r.professions || [],
     profession: (r.professions && r.professions[0]) || null,
     ratePerHour: r.rate_per_hour != null ? Number(r.rate_per_hour) : null,
+    experience: r.experience != null ? Number(r.experience) : null,
     avatarMimeType: r.avatar_mime_type || null,
     avatarBase64: r.avatar_base64 || null,
     bio: r.bio || "",

@@ -253,6 +253,10 @@ function MentorPage() {
                 </div>
               )}
               <div className="mt-3">{mentor.bio}</div>
+              <div className="mt-3 text-sm text-gray-600">
+                Опыт работы: {mentor.experience != null ? mentor.experience : 0}{" "}
+                лет
+              </div>
               <div className="mt-4 font-semibold text-lg">
                 Цена: {mentor.ratePerHour ?? 0} руб/час
               </div>

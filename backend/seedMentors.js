@@ -43,6 +43,7 @@ const mentors = [
     bio: "Помогаю создавать современные интерфейсы и прокачивать frontend-навыки.",
     professions: ["Frontend Developer"],
     ratePerHour: 1800,
+    experience: 5,
     avatarColor: "#4F46E5",
     portfolioTopic: "React UI",
     sessions: [
@@ -58,6 +59,7 @@ const mentors = [
     bio: "Настраиваю серверные части, строю архитектуру и помогаю запускать проекты на Django.",
     professions: ["Backend Developer"],
     ratePerHour: 2200,
+    experience: 7,
     avatarColor: "#0F766E",
     portfolioTopic: "Django API",
     sessions: [
@@ -73,6 +75,7 @@ const mentors = [
     bio: "Помогаю формировать продуктовые решения, чтобы интерфейсы были понятны пользователям.",
     professions: ["Product Designer"],
     ratePerHour: 2500,
+    experience: 8,
     avatarColor: "#BE123C",
     portfolioTopic: "UX Research",
     sessions: [
@@ -88,6 +91,7 @@ const mentors = [
     bio: "Обучаю работе с данными, моделям машинного обучения и аналитике продуктов.",
     professions: ["Data Scientist"],
     ratePerHour: 2700,
+    experience: 6,
     avatarColor: "#F97316",
     portfolioTopic: "ML Models",
     sessions: [
@@ -103,6 +107,7 @@ const mentors = [
     bio: "Веду команды к результату и делюсь практиками управления проектами и продуктами.",
     professions: ["Project Manager"],
     ratePerHour: 2000,
+    experience: 10,
     avatarColor: "#2563EB",
     portfolioTopic: "PM Scrum",
     sessions: [
@@ -118,6 +123,7 @@ const mentors = [
     bio: "Настраиваю автоматизацию запуска сервисов и помогаю внедрять стабильные DevOps-процессы.",
     professions: ["DevOps Engineer"],
     ratePerHour: 2300,
+    experience: 7,
     avatarColor: "#0EA5E9",
     portfolioTopic: "K8s Pipeline",
     sessions: [
@@ -133,6 +139,7 @@ const mentors = [
     bio: "Помогаю находить рост через маркетинг и аналитику, запускаю кампании и оцениваю их эффективность.",
     professions: ["Marketing Specialist"],
     ratePerHour: 1900,
+    experience: 4,
     avatarColor: "#9333EA",
     portfolioTopic: "Growth Plan",
     sessions: [
@@ -148,6 +155,7 @@ const mentors = [
     bio: "Учу строить мобильные приложение на Swift и поддерживать чистый архитектурный код.",
     professions: ["iOS Developer"],
     ratePerHour: 2400,
+    experience: 6,
     avatarColor: "#15803D",
     portfolioTopic: "iOS App",
     sessions: [
@@ -163,6 +171,7 @@ const mentors = [
     bio: "Провожу обучение по разработке смарт-контрактов и архитектуре Web3-продуктов.",
     professions: ["Blockchain Developer"],
     ratePerHour: 2800,
+    experience: 9,
     avatarColor: "#14B8A6",
     portfolioTopic: "Smart Contracts",
     sessions: [
@@ -178,6 +187,7 @@ const mentors = [
     bio: "Наставник по игровому движку Unreal, оптимизации и архитектуре игровых систем.",
     professions: ["Game Developer"],
     ratePerHour: 2600,
+    experience: 8,
     avatarColor: "#CA8A04",
     portfolioTopic: "Game Systems",
     sessions: [
