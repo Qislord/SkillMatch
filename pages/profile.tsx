@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { IoClose } from "react-icons/io5";
 import Header from "../components/header";
 import Button from "../components/button";
+import { formatSessionRange } from "../utils/formatDateRange";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5050";
 
@@ -47,6 +48,11 @@ function Profile() {
   const [sessionStart, setSessionStart] = useState<string>("");
   const [sessionEnd, setSessionEnd] = useState<string>("");
   const [bookings, setBookings] = useState<Array<any>>([]);
+  const [pendingCancelBooking, setPendingCancelBooking] = useState<any | null>(
+    null,
+  );
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isCancellingBooking, setIsCancellingBooking] = useState(false);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
   const avatarSrc = useMemo(() => {
@@ -322,6 +328,18 @@ function Profile() {
     }
   };
 
+  const openCancelConfirm = (booking: any) => {
+    setErrorMessage("");
+    setSuccessMessage("");
+    setPendingCancelBooking(booking);
+    setIsCancelModalOpen(true);
+  };
+
+  const closeCancelConfirm = () => {
+    setPendingCancelBooking(null);
+    setIsCancelModalOpen(false);
+  };
+
   const cancelBooking = async (sessionId: number) => {
     setErrorMessage("");
     try {
@@ -341,6 +359,18 @@ function Profile() {
       await fetchBookings();
     } catch {
       setErrorMessage("Не удалось подключиться к серверу");
+    }
+  };
+
+  const confirmCancelBooking = async () => {
+    if (!pendingCancelBooking) return;
+    setIsCancellingBooking(true);
+    try {
+      await cancelBooking(pendingCancelBooking.session_id);
+      setIsCancelModalOpen(false);
+      setPendingCancelBooking(null);
+    } finally {
+      setIsCancellingBooking(false);
     }
   };
 
@@ -621,9 +651,20 @@ function Profile() {
                         >
                           <div>
                             <div className="text-sm">
-                              {new Date(s.starts_at).toLocaleString()} —{" "}
-                              {new Date(s.ends_at).toLocaleString()}
+                              {formatSessionRange(s.starts_at, s.ends_at)}
                             </div>
+                            {s.meeting_link && (
+                              <div className="mt-1 text-sm text-blue-600">
+                                <a
+                                  href={s.meeting_link}
+                                  target="_blank"
+                                  rel="noreferrer noopener"
+                                  className="underline"
+                                >
+                                  Ссылка на Zoom
+                                </a>
+                              </div>
+                            )}
                           </div>
                           <div>
                             <Button
@@ -668,9 +709,23 @@ function Profile() {
                             : booking.mentor_name || booking.mentor_email}
                         </div>
                         <div className="text-sm text-gray-600">
-                          {new Date(booking.starts_at).toLocaleString()} —{" "}
-                          {new Date(booking.ends_at).toLocaleString()}
+                          {formatSessionRange(
+                            booking.starts_at,
+                            booking.ends_at,
+                          )}
                         </div>
+                        {booking.meeting_link && (
+                          <div className="text-sm text-blue-600">
+                            <a
+                              href={booking.meeting_link}
+                              target="_blank"
+                              rel="noreferrer noopener"
+                              className="underline"
+                            >
+                              Ссылка на Zoom
+                            </a>
+                          </div>
+                        )}
                         <div className="text-sm text-gray-500">
                           {profile?.role === "mentor"
                             ? `Email ученика: ${booking.student_email}`
@@ -682,7 +737,7 @@ function Profile() {
                           <Button
                             height={34}
                             text="Отменить запись"
-                            onClick={() => cancelBooking(booking.session_id)}
+                            onClick={() => openCancelConfirm(booking)}
                           />
                         </div>
                       )}
@@ -709,7 +764,43 @@ function Profile() {
           )}
         </div>
       </div>
-      
+
+      {isCancelModalOpen && pendingCancelBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold">Подтвердите отмену</h2>
+                <p className="mt-3 text-sm text-gray-600">
+                  Вы уверены, что хотите отменить запись на сессию
+                  <span className="font-medium">
+                    {formatSessionRange(
+                      pendingCancelBooking.starts_at,
+                      pendingCancelBooking.ends_at,
+                    )}
+                  </span>
+                  ?
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCancelConfirm}
+                className="rounded-full p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <IoClose size={24} />
+              </button>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button height={40} text="Нет" onClick={closeCancelConfirm} />
+              <Button
+                height={40}
+                text={isCancellingBooking ? "Отмена..." : "Подтвердить"}
+                onClick={confirmCancelBooking}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

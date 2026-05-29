@@ -33,6 +33,7 @@ async function createUsersTableIfNotExists() {
       mentor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       starts_at TIMESTAMP WITH TIME ZONE NOT NULL,
       ends_at TIMESTAMP WITH TIME ZONE NOT NULL,
+      meeting_link TEXT,
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
   `);
@@ -41,6 +42,7 @@ async function createUsersTableIfNotExists() {
     ADD COLUMN IF NOT EXISTS mentor_id INTEGER,
     ADD COLUMN IF NOT EXISTS starts_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP WITH TIME ZONE,
+    ADD COLUMN IF NOT EXISTS meeting_link TEXT,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
   `);
 
@@ -220,29 +222,49 @@ async function removePortfolioImage(userId, imageId) {
   return sanitizeUser(result.rows[0]);
 }
 
-async function createMentorSession(userId, { startsAt, endsAt }) {
+async function createMentorSession(userId, { startsAt, endsAt, meetingLink }) {
+  const overlapResult = await pool.query(
+    `SELECT id FROM mentor_sessions
+     WHERE COALESCE(mentor_id, user_id) = $1
+       AND NOT (
+         COALESCE(end_at, ends_at) <= $2
+         OR COALESCE(start_at, starts_at) >= $3
+       )
+     LIMIT 1;`,
+    [userId, startsAt, endsAt],
+  );
+
+  if (overlapResult.rows.length > 0) {
+    const overlapError = new Error(
+      "У вас уже есть сессия в это время или она пересекается с другой",
+    );
+    overlapError.statusCode = 400;
+    throw overlapError;
+  }
+
   const attempts = [
     {
-      cols: ["mentor_id", "starts_at", "ends_at"],
-      q: `INSERT INTO mentor_sessions (mentor_id, starts_at, ends_at) VALUES ($1, $2, $3) RETURNING id, mentor_id AS mentor_id, starts_at, ends_at, created_at;`,
+      q: `INSERT INTO mentor_sessions (mentor_id, starts_at, ends_at, meeting_link) VALUES ($1, $2, $3, $4) RETURNING id, mentor_id AS mentor_id, starts_at, ends_at, meeting_link, created_at;`,
     },
     {
-      cols: ["mentor_id", "start_at", "end_at"],
-      q: `INSERT INTO mentor_sessions (mentor_id, start_at, end_at) VALUES ($1, $2, $3) RETURNING id, mentor_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, created_at;`,
+      q: `INSERT INTO mentor_sessions (mentor_id, start_at, end_at, meeting_link) VALUES ($1, $2, $3, $4) RETURNING id, mentor_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, meeting_link, created_at;`,
     },
     {
-      cols: ["user_id", "starts_at", "ends_at"],
-      q: `INSERT INTO mentor_sessions (user_id, starts_at, ends_at) VALUES ($1, $2, $3) RETURNING id, user_id AS mentor_id, starts_at, ends_at, created_at;`,
+      q: `INSERT INTO mentor_sessions (user_id, starts_at, ends_at, meeting_link) VALUES ($1, $2, $3, $4) RETURNING id, user_id AS mentor_id, starts_at, ends_at, meeting_link, created_at;`,
     },
     {
-      cols: ["user_id", "start_at", "end_at"],
-      q: `INSERT INTO mentor_sessions (user_id, start_at, end_at) VALUES ($1, $2, $3) RETURNING id, user_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, created_at;`,
+      q: `INSERT INTO mentor_sessions (user_id, start_at, end_at, meeting_link) VALUES ($1, $2, $3, $4) RETURNING id, user_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, meeting_link, created_at;`,
     },
   ];
 
   for (const a of attempts) {
     try {
-      const result = await pool.query(a.q, [userId, startsAt, endsAt]);
+      const result = await pool.query(a.q, [
+        userId,
+        startsAt,
+        endsAt,
+        meetingLink,
+      ]);
       return result.rows[0];
     } catch (err) {
       // try next
@@ -282,6 +304,7 @@ async function getMentorSessions(userId) {
            COALESCE(mentor_id, user_id) AS mentor_id,
            COALESCE(start_at, starts_at) AS starts_at,
            COALESCE(end_at, ends_at) AS ends_at,
+           meeting_link,
            created_at
     FROM mentor_sessions
     WHERE COALESCE(mentor_id, user_id) = $1
@@ -418,7 +441,8 @@ async function findMentorSessionById(sessionId) {
       id,
       COALESCE(mentor_id, user_id) AS mentor_id,
       COALESCE(start_at, starts_at) AS starts_at,
-      COALESCE(end_at, ends_at) AS ends_at
+      COALESCE(end_at, ends_at) AS ends_at,
+      meeting_link
     FROM mentor_sessions
     WHERE id = $1;
   `;
@@ -496,7 +520,8 @@ async function getBookingsByUser(userId) {
            mentor.name AS mentor_name,
            mentor.email AS mentor_email,
            COALESCE(ms.start_at, ms.starts_at) AS starts_at,
-           COALESCE(ms.end_at, ms.ends_at) AS ends_at
+           COALESCE(ms.end_at, ms.ends_at) AS ends_at,
+           ms.meeting_link AS meeting_link
     FROM session_bookings sb
     JOIN mentor_sessions ms ON ms.id = sb.session_id
     JOIN users mentor ON mentor.id = COALESCE(ms.mentor_id, ms.user_id)
@@ -519,7 +544,8 @@ async function getBookingsForMentor(userId) {
            student.name AS student_name,
            student.email AS student_email,
            COALESCE(ms.start_at, ms.starts_at) AS starts_at,
-           COALESCE(ms.end_at, ms.ends_at) AS ends_at
+           COALESCE(ms.end_at, ms.ends_at) AS ends_at,
+           ms.meeting_link AS meeting_link
     FROM session_bookings sb
     JOIN mentor_sessions ms ON ms.id = sb.session_id
     JOIN users student ON student.id = sb.user_id

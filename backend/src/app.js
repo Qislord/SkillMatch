@@ -1,8 +1,9 @@
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 require("dotenv").config({
-  path: "../.env",
+  path: path.resolve(__dirname, "../../.env"),
 });
 const authRoutes = require("./routes/authRoutes");
 const mentorRoutes = require("./routes/mentorRoutes");

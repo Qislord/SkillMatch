@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Header from "../components/header";
 import Button from "../components/button";
+import { formatSessionRange } from "../utils/formatDateRange";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5050";
 
@@ -284,10 +285,7 @@ function MentorPage() {
                     className="flex flex-col gap-2 border p-3 rounded bg-white"
                   >
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div>
-                        {new Date(s.starts_at).toLocaleString()} —{" "}
-                        {new Date(s.ends_at).toLocaleString()}
-                      </div>
+                      <div>{formatSessionRange(s.starts_at, s.ends_at)}</div>
                       <div className="flex items-center gap-2">
                         {s.bookedByCurrentUser ? (
                           <span className="rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-700">
@@ -455,8 +453,10 @@ function MentorPage() {
             <h2 className="text-xl font-semibold mb-3">Подтвердите запись</h2>
             <div className="text-sm text-gray-700 mb-4">
               Вы хотите записаться на сессию{" "}
-              {new Date(pendingBookingSession.starts_at).toLocaleString()} –{" "}
-              {new Date(pendingBookingSession.ends_at).toLocaleString()}?
+              {formatSessionRange(
+                pendingBookingSession.starts_at,
+                pendingBookingSession.ends_at,
+              )}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
               <Button height={40} text="Отмена" onClick={closeBookingModal} />

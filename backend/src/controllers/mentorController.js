@@ -1,4 +1,5 @@
 const path = require("path");
+const { createHmac } = require("crypto");
 const {
   getUserById,
   appendPortfolioImages,
@@ -7,6 +8,110 @@ const {
   getMentorSessions,
   deleteMentorSession,
 } = require("../services/authService");
+
+const ZOOM_API_BASE = "https://api.zoom.us/v2";
+const ZOOM_API_USER =
+  process.env.ZOOM_API_USER_ID || process.env.ZOOM_ID || "me";
+const ZOOM_API_KEY = process.env.ZOOM_API_KEY || process.env.ZOOM_ORGANIZED_KEY;
+const ZOOM_API_SECRET = process.env.ZOOM_API_SECRET;
+const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID;
+const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET;
+const ZOOM_ACCOUNT_ID = process.env.ZOOM_ACCOUNT_ID;
+const ZOOM_STATIC_TOKEN =
+  process.env.ZOOM_API_TOKEN || process.env.ZOOM_BEARER_TOKEN;
+
+let cachedZoomToken = null;
+let cachedZoomTokenExpiresAt = 0;
+
+function base64UrlEncode(input) {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/=+$/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function createZoomJwt(apiKey, apiSecret) {
+  const header = base64UrlEncode(JSON.stringify({ alg: "HS256", typ: "JWT" }));
+  const now = Math.floor(Date.now() / 1000);
+  const payload = base64UrlEncode(
+    JSON.stringify({ iss: apiKey, exp: now + 60 * 60 }),
+  );
+  const signature = base64UrlEncode(
+    createHmac("sha256", apiSecret)
+      .update(`${header}.${payload}`)
+      .digest("base64"),
+  );
+  return `${header}.${payload}.${signature}`;
+}
+
+async function requestZoomOAuthToken() {
+  if (!ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) {
+    throw new Error(
+      "Для запроса Zoom токена нужны ZOOM_CLIENT_ID и ZOOM_CLIENT_SECRET",
+    );
+  }
+
+  const params = new URLSearchParams();
+  if (ZOOM_ACCOUNT_ID) {
+    params.set("grant_type", "account_credentials");
+    params.set("account_id", ZOOM_ACCOUNT_ID);
+  } else {
+    params.set("grant_type", "client_credentials");
+  }
+
+  const response = await fetch(
+    `https://zoom.us/oauth/token?${params.toString()}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${Buffer.from(
+          `${ZOOM_CLIENT_ID}:${ZOOM_CLIENT_SECRET}`,
+        ).toString("base64")}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(
+      `Не удалось получить Zoom токен: ${response.status} ${body}`,
+    );
+  }
+
+  const data = await response.json();
+  if (!data.access_token || !data.expires_in) {
+    throw new Error("Zoom OAuth ответ не содержит access_token");
+  }
+
+  cachedZoomToken = data.access_token;
+  cachedZoomTokenExpiresAt = Date.now() + (data.expires_in - 30) * 1000;
+  return cachedZoomToken;
+}
+
+async function getZoomAccessToken() {
+  if (cachedZoomToken && Date.now() < cachedZoomTokenExpiresAt) {
+    return cachedZoomToken;
+  }
+
+  if (ZOOM_STATIC_TOKEN) {
+    return ZOOM_STATIC_TOKEN;
+  }
+
+  if (ZOOM_API_KEY && ZOOM_API_SECRET) {
+    cachedZoomToken = createZoomJwt(ZOOM_API_KEY, ZOOM_API_SECRET);
+    cachedZoomTokenExpiresAt = Date.now() + 55 * 60 * 1000;
+    return cachedZoomToken;
+  }
+
+  if (ZOOM_CLIENT_ID && ZOOM_CLIENT_SECRET) {
+    return await requestZoomOAuthToken();
+  }
+
+  throw new Error(
+    "Zoom токен не настроен. Укажите ZOOM_API_TOKEN/ZOOM_BEARER_TOKEN, либо ZOOM_API_KEY+ZOOM_API_SECRET, либо ZOOM_CLIENT_ID+ZOOM_CLIENT_SECRET.",
+  );
+}
 
 async function ensureMentor(req, res) {
   if (!req.session.userId) {
@@ -88,6 +193,45 @@ async function uploadPortfolio(req, res, next) {
   }
 }
 
+async function createZoomMeeting(start, end, mentorName) {
+  const token = await getZoomAccessToken();
+  const durationMinutes = Math.max(1, Math.round((end - start) / 60000));
+
+  const response = await fetch(
+    `${ZOOM_API_BASE}/users/${encodeURIComponent(ZOOM_API_USER)}/meetings`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        topic: `Сессия с ${mentorName}`,
+        type: 2,
+        start_time: start.toISOString(),
+        duration: durationMinutes,
+        timezone: "UTC",
+        settings: {
+          join_before_host: true,
+          waiting_room: false,
+          approval_type: 0,
+          meeting_authentication: false,
+        },
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(
+      `Не удалось создать Zoom встречу: ${response.status} ${errorBody}`,
+    );
+  }
+
+  const data = await response.json();
+  return data.join_url || data.start_url || null;
+}
+
 async function removePortfolio(req, res, next) {
   try {
     const user = await ensureMentor(req, res);
@@ -138,9 +282,12 @@ async function createSession(req, res, next) {
         .json({ message: "Конец должен быть позже начала" });
     }
 
+    const meetingLink = await createZoomMeeting(start, end, user.name);
+
     const session = await createMentorSession(user.id, {
       startsAt: start.toISOString(),
       endsAt: end.toISOString(),
+      meetingLink,
     });
     return res.status(201).json({ message: "Сессия создана", session });
   } catch (error) {

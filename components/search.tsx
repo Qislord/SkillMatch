@@ -79,23 +79,27 @@ function Search() {
               Менторы не найдены. Попробуйте другой запрос.
             </div>
           ) : (
-            <div className="w-full flex flex-wrap items-start justify-left gap-10 mt-4">
+            <div className="w-full flex flex-wrap items-stretch justify-left gap-10 mt-4">
               {mentors.map((m) => (
-                <MentorCard
+                <div
                   key={m.id}
-                  id={m.id}
-                  photo={
-                    m.avatarBase64
-                      ? `data:${m.avatarMimeType};base64,${m.avatarBase64}`
-                      : "./images/img3.avif"
-                  }
-                  name={m.name}
-                  profession={m.profession || ""}
-                  experience={0}
-                  skills={m.skills || []}
-                  price={m.ratePerHour ?? 0}
-                  raiting={m.rating ?? 0}
-                />
+                  className="w-full sm:w-auto flex items-stretch justify-center"
+                >
+                  <MentorCard
+                    id={m.id}
+                    photo={
+                      m.avatarBase64
+                        ? `data:${m.avatarMimeType};base64,${m.avatarBase64}`
+                        : "./images/img3.avif"
+                    }
+                    name={m.name}
+                    profession={m.profession || ""}
+                    experience={0}
+                    skills={m.skills || []}
+                    price={m.ratePerHour ?? 0}
+                    raiting={m.rating ?? 0}
+                  />
+                </div>
               ))}
             </div>
           )}

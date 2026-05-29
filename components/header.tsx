@@ -105,23 +105,10 @@ function Header() {
 
   return (
     <div className="w-full flex items-center flex-col">
-      <div className="flex items-center justify-around p-10 w-350 h-12.5">
+      <div className="flex items-center justify-between p-10 w-350 h-12.5">
         <div className="text-[24px] font-bold">
           <a href="/">SkillMatch</a>
         </div>
-        <nav>
-          <ul className="flex flex-row gap-20">
-            <li>
-              <a href="#home">Главная</a>
-            </li>
-            <li>
-              <a href="#about">О компании</a>
-            </li>
-            <li>
-              <a href="#contact">Контакты</a>
-            </li>
-          </ul>
-        </nav>
         {currentUser?.name ? (
           <div className="relative" ref={menuRef}>
             <button
