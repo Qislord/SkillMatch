@@ -2,7 +2,12 @@ import { Link } from "react-router-dom";
 import Button from "../components/button";
 import { useState } from "react";
 import { IoClose } from "react-icons/io5";
+import { useNavigate } from "react-router-dom";
+
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5050";
+
 function Registration() {
+  const navigate = useNavigate();
   const [skills, setSkills] = useState<string[]>([]);
   const [skillInput, setSkillInput] = useState("");
   const [password, setPassword] = useState("");
@@ -10,6 +15,21 @@ function Registration() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("");
   const [name, setName] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const isPasswordValid = password.length >= 8;
+  const isConfirmPasswordValid = password === confirmPassword;
+
+  const canSubmit =
+    name.trim().length > 0 &&
+    isEmailValid &&
+    isPasswordValid &&
+    isConfirmPasswordValid &&
+    role.length > 0 &&
+    !isLoading;
 
   const addSkill = () => {
     const newSkill = skillInput.trim();
@@ -26,6 +46,56 @@ function Registration() {
     setSkills((prevSkills) =>
       prevSkills.filter((_, index) => index !== skillIndex),
     );
+  };
+
+  const handleRegistration = async () => {
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    if (!canSubmit) {
+      setErrorMessage("Проверьте поля формы перед отправкой");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role,
+          skills,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setErrorMessage(data.message ?? "Не удалось зарегистрироваться");
+        return;
+      }
+
+      setSuccessMessage("Вы успешно зарегистрированы. Теперь можно войти.");
+      setName("");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
+      setRole("");
+      setSkills([]);
+      setSkillInput("");
+      navigate("/");
+    } catch {
+      setErrorMessage("Не удалось подключиться к серверу");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -50,7 +120,7 @@ function Registration() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
-            {email.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && (
+            {email.length > 0 && !isEmailValid && (
               <div className="text-red-500 text-sm">
                 Пожалуйста, введите корректный email
               </div>
@@ -63,7 +133,7 @@ function Registration() {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            {password.length > 0 && password.length < 8 && (
+            {password.length > 0 && !isPasswordValid && (
               <div className="text-red-500 text-sm">
                 Пароль должен содержать не менее 8 символов
               </div>
@@ -76,7 +146,7 @@ function Registration() {
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
-            {password !== confirmPassword && (
+            {confirmPassword.length > 0 && !isConfirmPasswordValid && (
               <div className="text-red-500 text-sm">Пароли не совпадают</div>
             )}
             <label>Укажите ваши навыки</label>
@@ -125,12 +195,26 @@ function Registration() {
               >
                 <option value="" disabled hidden></option>
                 <option value="mentor">Ментор</option>
-                <option value="student">Ученик</option>
+                <option value="student">Обучающийся</option>
               </select>
             </div>
             <div className="mt-5">
-              <Button height={30} text="Зарегистрироваться"></Button>
+              <Button
+                height={30}
+                text={isLoading ? "Регистрация..." : "Зарегистрироваться"}
+                onClick={handleRegistration}
+              ></Button>
             </div>
+            {errorMessage && (
+              <div className="text-red-500 text-sm text-center">
+                {errorMessage}
+              </div>
+            )}
+            {successMessage && (
+              <div className="text-green-600 text-sm text-center">
+                {successMessage}
+              </div>
+            )}
             <div className=" text-sm text-center">
               Уже есть аккаунт?{" "}
               <Link

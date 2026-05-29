@@ -1,5 +1,6 @@
 import Button from "./button";
 import { FaStar } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 function MentorCard({
   photo,
   skills,
@@ -8,6 +9,7 @@ function MentorCard({
   experience,
   price,
   raiting,
+  id,
 }: {
   photo?: string;
   skills: string[];
@@ -16,7 +18,9 @@ function MentorCard({
   experience: number;
   price: number;
   raiting: number;
+  id?: number;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="flex items-center justify-center">
       <div className="w-80 h-150 ">
@@ -62,7 +66,11 @@ function MentorCard({
             <FaStar key={index} color="#ffc107" />
           ))}
         </div>
-        <Button height={30} text="Подробнее о менторе"></Button>
+        <Button
+          height={30}
+          text="Подробнее о менторе"
+          onClick={() => (id ? navigate(`/mentor/${id}`) : undefined)}
+        />
       </div>
     </div>
   );
