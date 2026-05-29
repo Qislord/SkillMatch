@@ -46,6 +46,8 @@ function Profile() {
   const [sessions, setSessions] = useState<Array<any>>([]);
   const [sessionStart, setSessionStart] = useState<string>("");
   const [sessionEnd, setSessionEnd] = useState<string>("");
+  const [bookings, setBookings] = useState<Array<any>>([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
   const avatarSrc = useMemo(() => {
     if (!profile?.avatarMimeType || !profile.avatarBase64) {
@@ -98,6 +100,11 @@ function Profile() {
 
     void loadProfile();
   }, [navigate]);
+
+  useEffect(() => {
+    if (!profile) return;
+    void fetchBookings();
+  }, [profile]);
 
   const addSkill = () => {
     const normalized = skillInput.trim();
@@ -246,6 +253,26 @@ function Profile() {
     }
   };
 
+  const fetchBookings = async () => {
+    setIsLoadingBookings(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/bookings`, {
+        method: "GET",
+        credentials: "include",
+      });
+      if (!response.ok) {
+        setBookings([]);
+        return;
+      }
+      const data = await response.json();
+      setBookings(data.bookings || []);
+    } catch {
+      setBookings([]);
+    } finally {
+      setIsLoadingBookings(false);
+    }
+  };
+
   useEffect(() => {
     if (profile?.role === "mentor") {
       void fetchSessions();
@@ -269,6 +296,7 @@ function Profile() {
         return;
       }
       await fetchSessions();
+      await fetchBookings();
       setSessionStart("");
       setSessionEnd("");
       setSuccessMessage("Сессия создана");
@@ -291,6 +319,28 @@ function Profile() {
       setSuccessMessage("Сессия удалена");
     } catch {
       // ignore
+    }
+  };
+
+  const cancelBooking = async (sessionId: number) => {
+    setErrorMessage("");
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/auth/bookings/${sessionId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        setErrorMessage(data.message ?? "Не удалось отменить запись");
+        return;
+      }
+      setSuccessMessage("Запись отменена");
+      await fetchBookings();
+    } catch {
+      setErrorMessage("Не удалось подключиться к серверу");
     }
   };
 
@@ -521,7 +571,9 @@ function Profile() {
                             className="w-full h-24 object-cover"
                           />
                           <button
-                            onClick={() => removePortfolioItem(item.id)}
+                            onClick={() =>
+                              item.id && removePortfolioItem(item.id)
+                            }
                             className="absolute top-1 right-1 bg-white rounded-full p-1 text-red-600"
                           >
                             ×
@@ -589,6 +641,58 @@ function Profile() {
             </div>
           )}
 
+          <div className="mt-6 border-t pt-6">
+            <h2 className="text-xl font-semibold mb-4">
+              {profile?.role === "mentor" ? "Ученики" : "Мои записи"}
+            </h2>
+            {isLoadingBookings ? (
+              <div className="text-sm text-gray-500">Загрузка...</div>
+            ) : bookings.length === 0 ? (
+              <div className="text-sm text-gray-500">
+                {profile?.role === "mentor"
+                  ? "Пока нет учеников, записавшихся на ваши сессии"
+                  : "Вы еще не записаны на сессии"}
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {bookings.map((booking) => (
+                  <li
+                    key={booking.booking_id}
+                    className="rounded-2xl border border-gray-200 bg-gray-50 p-4"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex flex-col gap-1">
+                        <div className="font-semibold text-gray-900">
+                          {profile?.role === "mentor"
+                            ? booking.student_name || booking.student_email
+                            : booking.mentor_name || booking.mentor_email}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {new Date(booking.starts_at).toLocaleString()} —{" "}
+                          {new Date(booking.ends_at).toLocaleString()}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {profile?.role === "mentor"
+                            ? `Email ученика: ${booking.student_email}`
+                            : `Ментор: ${booking.mentor_name} (${booking.mentor_email})`}
+                        </div>
+                      </div>
+                      {profile?.role !== "mentor" && (
+                        <div className="mt-3 sm:mt-0">
+                          <Button
+                            height={34}
+                            text="Отменить запись"
+                            onClick={() => cancelBooking(booking.session_id)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
           <div className="mt-6 flex justify-end">
             <Button
               height={40}
@@ -605,6 +709,7 @@ function Profile() {
           )}
         </div>
       </div>
+      
     </>
   );
 }

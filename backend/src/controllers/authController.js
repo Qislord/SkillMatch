@@ -4,6 +4,9 @@ const {
   registerUser,
   updateUserAvatar,
   updateUserProfile,
+  getBookingsByUser,
+  getBookingsForMentor,
+  deleteSessionBooking,
 } = require("../services/authService");
 const path = require("path");
 
@@ -164,6 +167,62 @@ async function updateProfile(req, res, next) {
   }
 }
 
+async function getBookings(req, res, next) {
+  try {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Пользователь не авторизован" });
+    }
+
+    const currentUser = await getUserById(req.session.userId);
+    if (!currentUser) {
+      return res.status(401).json({ message: "Пользователь не авторизован" });
+    }
+
+    if (currentUser.role === "mentor") {
+      const bookings = await getBookingsForMentor(currentUser.id);
+      return res.status(200).json({ bookings });
+    }
+
+    const bookings = await getBookingsByUser(currentUser.id);
+    return res.status(200).json({ bookings });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+async function cancelBooking(req, res, next) {
+  try {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Пользователь не авторизован" });
+    }
+
+    const currentUser = await getUserById(req.session.userId);
+    if (!currentUser) {
+      return res.status(401).json({ message: "Пользователь не авторизован" });
+    }
+
+    if (currentUser.role === "mentor") {
+      return res
+        .status(403)
+        .json({ message: "Менторы не могут отменять запись на сессии" });
+    }
+
+    const sessionId = Number(req.params.id);
+    if (Number.isNaN(sessionId)) {
+      return res.status(400).json({ message: "Неверный id сессии" });
+    }
+
+    const deleted = await deleteSessionBooking(sessionId, currentUser.id);
+    if (!deleted) {
+      return res.status(404).json({ message: "Запись не найдена" });
+    }
+
+    return res.status(200).json({ message: "Запись отменена" });
+  } catch (error) {
+    return next(error);
+  }
+}
+
 async function uploadAvatar(req, res, next) {
   try {
     if (!req.session.userId) {
@@ -226,4 +285,6 @@ module.exports = {
   logout,
   updateProfile,
   uploadAvatar,
+  getBookings,
+  cancelBooking,
 };

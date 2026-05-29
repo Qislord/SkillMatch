@@ -43,6 +43,19 @@ async function createUsersTableIfNotExists() {
     ADD COLUMN IF NOT EXISTS ends_at TIMESTAMP WITH TIME ZONE,
     ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mentor_reviews (
+      id SERIAL PRIMARY KEY,
+      mentor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      UNIQUE (mentor_id, user_id)
+    );
+  `);
 }
 
 function normalizeEmail(email) {
@@ -149,7 +162,10 @@ async function updateUserProfile(
   const result = await pool.query(
     `
             UPDATE users
-            SET skills = $2, bio = $3, professions = $4, rate_per_hour = $5
+            SET skills = $2,
+                bio = $3,
+                professions = COALESCE($4, professions),
+                rate_per_hour = COALESCE($5, rate_per_hour)
             WHERE id = $1
             RETURNING id, name, email, role, skills, bio, professions, rate_per_hour, portfolio, avatar_mime_type, avatar_base64, created_at;
         `,
@@ -236,32 +252,44 @@ async function createMentorSession(userId, { startsAt, endsAt }) {
   throw new Error("Не удалось создать сессию — несовместимая схема БД");
 }
 
+async function cleanupExpiredMentorSessions(userId) {
+  const now = new Date().toISOString();
+  await ensureSessionBookingsTable();
+
+  await pool.query(
+    `DELETE FROM session_bookings
+     WHERE session_id IN (
+       SELECT id FROM mentor_sessions
+       WHERE COALESCE(end_at, ends_at) < $1
+         AND COALESCE(mentor_id, user_id) = $2
+     );`,
+    [now, userId],
+  );
+
+  await pool.query(
+    `DELETE FROM mentor_sessions
+     WHERE COALESCE(end_at, ends_at) < $1
+       AND COALESCE(mentor_id, user_id) = $2;`,
+    [now, userId],
+  );
+}
+
 async function getMentorSessions(userId) {
-  const attempts = [
-    // prefer start_at / end_at variants first (older schema)
-    `SELECT id, mentor_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, created_at FROM mentor_sessions WHERE mentor_id = $1 ORDER BY start_at;`,
-    `SELECT id, mentor_id AS mentor_id, starts_at, ends_at, created_at FROM mentor_sessions WHERE mentor_id = $1 ORDER BY starts_at;`,
-    `SELECT id, user_id AS mentor_id, start_at AS starts_at, end_at AS ends_at, created_at FROM mentor_sessions WHERE user_id = $1 ORDER BY start_at;`,
-    `SELECT id, user_id AS mentor_id, starts_at, ends_at, created_at FROM mentor_sessions WHERE user_id = $1 ORDER BY starts_at;`,
-  ];
+  await cleanupExpiredMentorSessions(userId);
 
-  for (const q of attempts) {
-    try {
-      const result = await pool.query(q, [userId]);
-      if (result.rows.length > 0) {
-        return result.rows;
-      }
-      // otherwise try next query variant
-    } catch (err) {
-      console.debug(
-        "[getMentorSessions] query failed, trying next. err=",
-        err && err.message,
-      );
-      // try next
-    }
-  }
+  const query = `
+    SELECT id,
+           COALESCE(mentor_id, user_id) AS mentor_id,
+           COALESCE(start_at, starts_at) AS starts_at,
+           COALESCE(end_at, ends_at) AS ends_at,
+           created_at
+    FROM mentor_sessions
+    WHERE COALESCE(mentor_id, user_id) = $1
+    ORDER BY starts_at;
+  `;
 
-  return [];
+  const result = await pool.query(query, [userId]);
+  return result.rows;
 }
 
 async function deleteMentorSession(userId, sessionId) {
@@ -283,22 +311,97 @@ async function deleteMentorSession(userId, sessionId) {
   return false;
 }
 
-async function getMentorsList() {
-  const result = await pool.query(
-    `SELECT id, name, email, role, professions, rate_per_hour, avatar_mime_type, avatar_base64, bio FROM users WHERE role = 'mentor' ORDER BY name;`,
-  );
+async function getMentorsList({
+  query,
+  minRating = 0,
+  currentUserSkills,
+} = {}) {
+  const searchWords =
+    typeof query === "string" ? query.trim().split(/\s+/).filter(Boolean) : [];
+
+  const whereClauses = ["u.role = 'mentor'"];
+  const params = [];
+  let paramIndex = 1;
+
+  if (searchWords.length > 0) {
+    const likeParams = searchWords.map((word) => `%${word}%`);
+    params.push(...likeParams);
+    const placeholders = likeParams.map(() => `$${paramIndex++}`);
+
+    whereClauses.push(
+      `(ARRAY_TO_STRING(u.professions, ' ') ILIKE ANY(ARRAY[${placeholders.join(",")}])
+       OR ARRAY_TO_STRING(u.skills, ' ') ILIKE ANY(ARRAY[${placeholders.join(",")}])
+       OR u.name ILIKE ANY(ARRAY[${placeholders.join(",")}]))`,
+    );
+  }
+
+  const havingClause =
+    minRating > 0
+      ? `HAVING COALESCE(ROUND(AVG(mr.rating)::numeric, 0), 0) >= $${paramIndex}`
+      : "";
+  if (minRating > 0) {
+    params.push(minRating);
+    paramIndex++;
+  }
+
+  const useSkillMatching =
+    Array.isArray(currentUserSkills) &&
+    currentUserSkills.length > 0 &&
+    searchWords.length === 0;
+
+  if (useSkillMatching) {
+    params.push(currentUserSkills);
+  }
+
+  const selectSkillMatch = useSkillMatching
+    ? `, cardinality(ARRAY(SELECT DISTINCT s FROM unnest(u.skills) AS s WHERE s = ANY($${paramIndex}::text[]))) AS skill_match_count`
+    : "";
+
+  const orderBy = useSkillMatching
+    ? "skill_match_count DESC, rating DESC, u.name"
+    : "rating DESC, u.name";
+
+  const querySql = `
+    SELECT u.id,
+           u.name,
+           u.email,
+           u.role,
+           u.skills,
+           u.professions,
+           u.rate_per_hour,
+           u.avatar_mime_type,
+           u.avatar_base64,
+           u.bio,
+           COALESCE(ROUND(AVG(mr.rating)::numeric, 0), 0) AS rating,
+           COUNT(mr.id) AS review_count
+           ${selectSkillMatch}
+    FROM users u
+    LEFT JOIN mentor_reviews mr ON mr.mentor_id = u.id
+    WHERE ${whereClauses.join(" AND ")}
+    GROUP BY u.id
+    ${havingClause}
+    ORDER BY ${orderBy};
+  `;
+
+  const result = await pool.query(querySql, params);
   return result.rows.map((r) => ({
     id: r.id,
     name: r.name,
+    email: r.email,
+    role: r.role,
+    skills: r.skills || [],
+    professions: r.professions || [],
     profession: (r.professions && r.professions[0]) || null,
     ratePerHour: r.rate_per_hour != null ? Number(r.rate_per_hour) : null,
     avatarMimeType: r.avatar_mime_type || null,
     avatarBase64: r.avatar_base64 || null,
     bio: r.bio || "",
+    rating: r.rating != null ? Number(r.rating) : 0,
+    reviewCount: Number(r.review_count),
   }));
 }
 
-async function createSessionBooking(sessionId, userId) {
+async function ensureSessionBookingsTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS session_bookings (
       id SERIAL PRIMARY KEY,
@@ -307,11 +410,34 @@ async function createSessionBooking(sessionId, userId) {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
     );
   `);
+}
 
-  // prevent duplicate booking
+async function findMentorSessionById(sessionId) {
+  const query = `
+    SELECT
+      id,
+      COALESCE(mentor_id, user_id) AS mentor_id,
+      COALESCE(start_at, starts_at) AS starts_at,
+      COALESCE(end_at, ends_at) AS ends_at
+    FROM mentor_sessions
+    WHERE id = $1;
+  `;
+
+  const result = await pool.query(query, [sessionId]);
+  return result.rows.length > 0 ? result.rows[0] : null;
+}
+
+async function createSessionBooking(sessionId, userId) {
+  await ensureSessionBookingsTable();
+
+  const session = await findMentorSessionById(sessionId);
+  if (!session) {
+    return { notFound: true };
+  }
+
   const exists = await pool.query(
-    `SELECT id FROM session_bookings WHERE session_id = $1 AND user_id = $2`,
-    [sessionId, userId],
+    `SELECT id FROM session_bookings WHERE session_id = $1`,
+    [sessionId],
   );
   if (exists.rows.length > 0) return { already: true };
 
@@ -320,6 +446,184 @@ async function createSessionBooking(sessionId, userId) {
     [sessionId, userId],
   );
   return inserted.rows[0];
+}
+
+async function getBookedSessionIds(sessionIds) {
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `SELECT DISTINCT session_id FROM session_bookings WHERE session_id = ANY($1::int[])`,
+    [sessionIds],
+  );
+
+  return result.rows.map((row) => row.session_id);
+}
+
+async function deleteSessionBooking(sessionId, userId) {
+  await ensureSessionBookingsTable();
+
+  const result = await pool.query(
+    `DELETE FROM session_bookings WHERE session_id = $1 AND user_id = $2 RETURNING id`,
+    [sessionId, userId],
+  );
+
+  return result.rows.length > 0;
+}
+
+async function getBookedSessionIdsByUser(userId, sessionIds) {
+  if (!Array.isArray(sessionIds) || sessionIds.length === 0) {
+    return [];
+  }
+
+  const result = await pool.query(
+    `SELECT session_id FROM session_bookings WHERE user_id = $1 AND session_id = ANY($2::int[])`,
+    [userId, sessionIds],
+  );
+
+  return result.rows.map((row) => row.session_id);
+}
+
+async function getBookingsByUser(userId) {
+  await ensureSessionBookingsTable();
+
+  const query = `
+    SELECT sb.id AS booking_id,
+           sb.created_at AS booked_at,
+           ms.id AS session_id,
+           mentor.id AS mentor_id,
+           mentor.name AS mentor_name,
+           mentor.email AS mentor_email,
+           COALESCE(ms.start_at, ms.starts_at) AS starts_at,
+           COALESCE(ms.end_at, ms.ends_at) AS ends_at
+    FROM session_bookings sb
+    JOIN mentor_sessions ms ON ms.id = sb.session_id
+    JOIN users mentor ON mentor.id = COALESCE(ms.mentor_id, ms.user_id)
+    WHERE sb.user_id = $1
+    ORDER BY starts_at;
+  `;
+
+  const result = await pool.query(query, [userId]);
+  return result.rows;
+}
+
+async function getBookingsForMentor(userId) {
+  await ensureSessionBookingsTable();
+
+  const query = `
+    SELECT sb.id AS booking_id,
+           sb.created_at AS booked_at,
+           ms.id AS session_id,
+           student.id AS student_id,
+           student.name AS student_name,
+           student.email AS student_email,
+           COALESCE(ms.start_at, ms.starts_at) AS starts_at,
+           COALESCE(ms.end_at, ms.ends_at) AS ends_at
+    FROM session_bookings sb
+    JOIN mentor_sessions ms ON ms.id = sb.session_id
+    JOIN users student ON student.id = sb.user_id
+    WHERE COALESCE(ms.mentor_id, ms.user_id) = $1
+    ORDER BY starts_at;
+  `;
+
+  const result = await pool.query(query, [userId]);
+  return result.rows;
+}
+
+async function ensureMentorReviewsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS mentor_reviews (
+      id SERIAL PRIMARY KEY,
+      mentor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+      comment TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      UNIQUE (mentor_id, user_id)
+    );
+  `);
+}
+
+async function createOrUpdateMentorReview(mentorId, userId, rating, comment) {
+  await ensureMentorReviewsTable();
+
+  const result = await pool.query(
+    `INSERT INTO mentor_reviews (mentor_id, user_id, rating, comment)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (mentor_id, user_id)
+     DO UPDATE SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = NOW()
+     RETURNING id, mentor_id, user_id, rating, comment, created_at, updated_at;`,
+    [mentorId, userId, rating, comment],
+  );
+
+  return result.rows[0];
+}
+
+async function getMentorReviews(mentorId) {
+  await ensureMentorReviewsTable();
+
+  const result = await pool.query(
+    `SELECT mr.id,
+            mr.rating,
+            mr.comment,
+            mr.created_at,
+            mr.updated_at,
+            u.id AS user_id,
+            u.name AS user_name
+         FROM mentor_reviews mr
+         JOIN users u ON u.id = mr.user_id
+         WHERE mr.mentor_id = $1
+         ORDER BY mr.updated_at DESC;`,
+    [mentorId],
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    rating: Number(row.rating),
+    comment: row.comment || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    userId: row.user_id,
+    userName: row.user_name,
+  }));
+}
+
+async function getMentorReviewByUser(mentorId, userId) {
+  await ensureMentorReviewsTable();
+
+  const result = await pool.query(
+    `SELECT mr.id,
+            mr.rating,
+            mr.comment,
+            mr.created_at,
+            mr.updated_at
+         FROM mentor_reviews mr
+         WHERE mr.mentor_id = $1 AND mr.user_id = $2;`,
+    [mentorId, userId],
+  );
+
+  return result.rows.length > 0
+    ? {
+        id: result.rows[0].id,
+        rating: Number(result.rows[0].rating),
+        comment: result.rows[0].comment || "",
+        createdAt: result.rows[0].created_at,
+        updatedAt: result.rows[0].updated_at,
+      }
+    : null;
+}
+
+async function deleteMentorReview(mentorId, userId) {
+  await ensureMentorReviewsTable();
+
+  const result = await pool.query(
+    `DELETE FROM mentor_reviews WHERE mentor_id = $1 AND user_id = $2 RETURNING id;`,
+    [mentorId, userId],
+  );
+
+  return result.rows.length > 0;
 }
 
 async function updateUserAvatar(userId, { avatarMimeType, avatarBase64 }) {
@@ -354,4 +658,13 @@ module.exports = {
   deleteMentorSession,
   getMentorsList,
   createSessionBooking,
+  deleteSessionBooking,
+  getBookedSessionIds,
+  getBookedSessionIdsByUser,
+  createOrUpdateMentorReview,
+  getMentorReviews,
+  getMentorReviewByUser,
+  deleteMentorReview,
+  getBookingsByUser,
+  getBookingsForMentor,
 };

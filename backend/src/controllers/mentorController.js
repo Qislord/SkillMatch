@@ -121,8 +121,15 @@ async function createSession(req, res, next) {
 
     const start = new Date(startsAt);
     const end = new Date(endsAt);
+    const now = new Date();
     if (isNaN(start.getTime()) || isNaN(end.getTime())) {
       return res.status(400).json({ message: "Неверный формат даты" });
+    }
+
+    if (start <= now) {
+      return res
+        .status(400)
+        .json({ message: "Начало сессии должно быть в будущем" });
     }
 
     if (end <= start) {

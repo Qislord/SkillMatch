@@ -11,6 +11,8 @@ const {
   listPublicMentors,
   getPublicMentor,
   bookSession,
+  leaveReview,
+  deleteReview,
 } = require("../controllers/publicMentorController");
 
 const router = express.Router();
@@ -29,6 +31,8 @@ router.delete("/sessions/:id", deleteSession);
 // public endpoints
 router.get("/", listPublicMentors);
 router.get("/:id", getPublicMentor);
+router.post("/:id/review", leaveReview);
+router.delete("/:id/review", deleteReview);
 router.post("/sessions/:id/book", bookSession);
 
 module.exports = router;
