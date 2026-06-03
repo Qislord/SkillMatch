@@ -1,75 +1,67 @@
-# React + TypeScript + Vite
+# 🎓 Требования к веб-приложению сервиса менторства
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> **Стек технологий:**  
+> 💻 **Frontend:** React  
+> ⚙️ **Backend:** Node.js (Express.js)  
+> 🔗 **Интеграции:** Zoom, Payment Gateways
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📋 Общие требования
 
-## React Compiler
+1.  **🎨 UI/UX**  
+    Приложение должно иметь интуитивно понятный интерфейс, адаптивный дизайн и обеспечивать удобный доступ к функциям менторства на любых устройствах (**десктоп, планшет, мобильный**).
+2.  **🔒 Безопасность и надежность**  
+    Гарантия безопасности данных пользователей (шифрование соединений, защита персональных данных) и стабильная работа внешних интеграций (**Zoom, платежные шлюзы**).
+3.  **🌐 Поддержка браузеров**  
+    Поддержка минимально необходимых версий браузеров:
+    *   Chrome >= 60
+    *   Firefox >= 55
+    *   Edge >= 79
+    *   Safari >= 12
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+---
 
-Note: This will impact Vite dev & build performances.
+## ⚙️ Функциональные требования
 
-## Expanding the ESLint configuration
+### 1. 👨‍🏫 Профили менторов
+Пользователь должен видеть список доступных менторов с возможностью выбора специалиста для сессии.
+*   **Карточка ментора:** Каждый профиль содержит имя, список навыков (`skills`), ставку за час и рейтинг.
+*   **Сортировка:** Список отсортирован по релевантности (матчинг по навыкам), рейтингу или стоимости.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 2. 📅 Модуль бронирования
+Основной модуль поддерживает базовые операции управления сессиями:
+*   **Управление статусом:** Создание/отмена брони сессии (`book`/`cancel`).
+*   **Навигация:** Переход между разделами «Предстоящие» и «Завершенные» сессии (`upcoming`/`completed`).
+*   **Изменение времени:** Реседул сессии на произвольное время.
+*   **Уведомления:** Управление напоминаниями (включение/выключение + настройка каналов уведомлений).
+*   **Повторение:** Повторное бронирование того же ментора (`repeat session` on/off).
+*   **Авто-подбор:** Автоматический подбор ментора (случайный или алгоритмический выбор по навыкам).
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### 3. 🔔 Уведомления
+Система должна предоставлять уведомления и всплывающую панель (toast) о событиях:
+*   Подтверждение брони.
+*   Начало сессии.
+*   Получение нового отзыва.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 4. 💾 Сохранение состояния
+*   Сохранять статус бронирования и данные профиля при закрытии окна/таблицы.
+*   Возобновлять сессию при следующем входе (требуется **авторизация**).
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 5. ❤️ Избранное и планы
+*   Возможность сохранения избранных менторов.
+*   Создание планов развития пользователями.
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Дополнительные функциональные требования (Optional)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+1.  **🔍 Поиск и фильтры**  
+    Поисковая строка для быстрого нахождения нужного ментора по навыку или языку.
+2.  **⭐ Отзывы и рейтинги**  
+    Система отзывов и сортировка менторов по количеству успешных сессий.
+3.  **🌐 Социальная интеграция**  
+    *   Поделиться ссылкой на профиль ментора или отзывом в соцсетях (VKontakte, Twitter, Facebook).
+    *   Интеграция видеосвязи (**Zoom**) напрямую в интерфейсе приложения.
+
+---
